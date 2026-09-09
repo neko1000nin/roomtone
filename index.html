@@ -1,0 +1,1383 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#07080b">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Room Tone</title>
+<style>
+  /* 気分の色。@property で登録してあるので、差し替え時に全要素が滑らかに変わる */
+  @property --a{syntax:"<color>"; inherits:true; initial-value:#7d95c8;}
+  :root{
+    --bg:#07080b;
+    --panel:#0d0f15;
+    --panel-2:#131722;
+    --panel-3:#0a0c11;
+    --line:#1a1f29;
+    --line-2:#28303e;
+    --fg:#edeff4;
+    --fg-2:#9aa3b2;
+    --fg-3:#5c6575;
+    --fg-4:#3e4553;
+    --a:#7d95c8;              /* 現在の気分の色。JSで差し替える */
+    --serif: Georgia, "Times New Roman", "Yu Mincho", YuMincho, "Hiragino Mincho ProN", "MS PMincho", serif;
+    --sans: "Segoe UI", "Yu Gothic UI", "Hiragino Sans", system-ui, -apple-system, sans-serif;
+    --mono: "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace;
+    --r:16px;
+    transition:--a .9s ease;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg); color:var(--fg); font:15px/1.7 var(--sans);
+    -webkit-font-smoothing:antialiased; overflow-x:hidden;
+  }
+  ::selection{background:var(--a); color:#07080b}
+  ::-webkit-scrollbar{width:10px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#1c212b; border-radius:5px; border:2px solid var(--bg)}
+  ::-webkit-scrollbar-thumb:hover{background:#28303e}
+
+  /* 気分の色が上下から差してくる、ゆるい光 */
+  .glow{
+    position:fixed; top:-440px; left:50%; transform:translateX(-50%);
+    width:1600px; height:840px; pointer-events:none; z-index:0;
+    background:radial-gradient(ellipse at center, var(--a) 0%, transparent 60%);
+    opacity:.15; filter:blur(56px);
+    transition:opacity 1s ease;
+  }
+  .glow2{
+    position:fixed; bottom:-520px; right:-420px;
+    width:1100px; height:900px; pointer-events:none; z-index:0;
+    background:radial-gradient(circle at center, var(--a) 0%, transparent 62%);
+    opacity:.05; filter:blur(80px);
+    transition:opacity 1s ease;
+  }
+  body.idle .glow{opacity:.055}
+  body.idle .glow2{opacity:.02}
+
+  /* フィルムグレイン。触れない・ごく薄い */
+  .grain{
+    position:fixed; inset:0; z-index:2; pointer-events:none; opacity:.05;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");
+  }
+
+  .wrap{position:relative; z-index:1; max-width:1120px; margin:0 auto; padding:44px 28px 90px}
+
+  /* ---------- header ---------- */
+  header{
+    display:flex; align-items:flex-end; gap:18px;
+    padding-bottom:24px; margin-bottom:10px; position:relative;
+    border-bottom:1px solid var(--line);
+  }
+  header::after{  /* 二重の罫線 */
+    content:""; position:absolute; left:0; right:0; bottom:-5px; height:1px; background:var(--line);
+  }
+  .mark{display:flex; align-items:flex-start; gap:15px}
+  .mark svg{width:42px; height:42px; color:var(--a); flex:none}  /* 題字と同じ高さ＝行の中央に揃う */
+  .mark h1{font:400 42px/1 var(--serif); letter-spacing:-.02em; word-spacing:-.05em;
+           font-kerning:normal; margin:0}
+  .mark .tag{font:400 9.5px/1 var(--sans); letter-spacing:.5em; color:var(--fg-4); margin-top:10px}
+  header .spacer{flex:1}
+  .keys{
+    display:flex; align-items:center; gap:8px; margin-bottom:4px;
+    color:var(--fg-4); font:400 9.5px/1 var(--sans); letter-spacing:.2em; text-transform:uppercase;
+    white-space:nowrap;
+  }
+  .keys b{
+    font:400 10px/1 var(--mono); font-weight:400; color:var(--fg-3);
+    border:1px solid var(--line-2); border-radius:4px; padding:3px 6px;
+  }
+  @media (max-width:700px){ .keys{display:none} }
+
+  .alert{
+    margin:18px 0 0; padding:14px 18px; border-radius:12px;
+    border:1px solid #4a3d1c; background:#1a1610; color:#d8c79a; font-size:13px; line-height:1.8;
+  }
+  .alert b{color:#f2dc9e; font-weight:600}
+  .alert code{background:#0d0b07; border:1px solid #3c3520; border-radius:5px; padding:1px 6px;
+              font-size:12px; color:#f2dc9e}
+
+  /* ---------- section rules ---------- */
+  .sec{display:flex; align-items:baseline; gap:14px; margin:52px 0 18px}
+  .sec .idx{
+    font:400 13px/1 var(--serif); color:var(--a); letter-spacing:.08em;
+    font-variant-numeric:tabular-nums; flex:none;
+  }
+  .sec h2{
+    font:400 11px/1 var(--sans); letter-spacing:.38em; text-transform:uppercase;
+    color:var(--fg-2); margin:0; flex:none;
+  }
+  .sec .rule{flex:1; height:1px; align-self:center;
+             background:linear-gradient(90deg, var(--line-2), var(--line) 45%, transparent)}
+  .linkbtn{
+    background:none; border:0; color:var(--fg-3); cursor:pointer; padding:3px 1px; flex:none;
+    font:400 10.5px/1 var(--sans); letter-spacing:.24em; text-transform:uppercase;
+    border-bottom:1px solid transparent;
+    transition:color .2s, border-color .2s;
+  }
+  .linkbtn:hover{color:var(--a); border-bottom-color:var(--a)}
+
+  /* ---------- moods ---------- */
+  .moods{display:grid; grid-template-columns:repeat(4,1fr); gap:14px}
+  @media (max-width:900px){ .moods{grid-template-columns:repeat(2,1fr)} }
+  @media (max-width:480px){ .moods{grid-template-columns:1fr} }
+
+  .mood{
+    position:relative; overflow:hidden; text-align:left; cursor:pointer; color:inherit;
+    background:linear-gradient(165deg, var(--panel-2), var(--panel) 58%);
+    border:1px solid var(--line); border-radius:var(--r);
+    padding:20px 19px 18px; font:inherit; min-height:152px;
+    transition:border-color .3s, transform .18s, box-shadow .3s;
+  }
+  .mood::before{  /* その気分の色が右上から差す */
+    content:""; position:absolute; inset:0; pointer-events:none; opacity:0;
+    background:radial-gradient(240px 150px at 88% -18%, var(--h), transparent 72%);
+    transition:opacity .35s;
+  }
+  .mood:hover{transform:translateY(-2px); border-color:var(--line-2)}
+  .mood:hover::before{opacity:.11}
+  .mood:active{transform:translateY(0)}
+  .mood.on{
+    border-color:var(--h);
+    border-color:color-mix(in srgb, var(--h) 60%, var(--line));
+    box-shadow:0 0 0 1px color-mix(in srgb, var(--h) 28%, transparent),
+               0 14px 38px -20px var(--h);
+  }
+  .mood.on::before{opacity:.17}
+  .mood .no{
+    position:absolute; right:12px; bottom:2px; font:400 58px/1 var(--serif);
+    color:var(--h); opacity:.09; font-variant-numeric:tabular-nums;
+    transition:opacity .3s; pointer-events:none;
+  }
+  .mood:hover .no{opacity:.16}
+  .mood.on .no{opacity:.26}
+  .mood svg{width:22px; height:22px; color:var(--h); display:block; margin-bottom:16px;
+            opacity:.9; transition:opacity .25s; position:relative}
+  .mood:hover svg,.mood.on svg{opacity:1}
+  .mood .en{display:block; font:400 9px/1 var(--sans); letter-spacing:.3em;
+            text-transform:uppercase; color:var(--fg-4); margin-bottom:8px; position:relative}
+  .mood.on .en{color:var(--h)}
+  .mood .nm{display:block; font:400 19px/1.3 var(--serif); letter-spacing:.06em; color:var(--fg);
+            position:relative}
+  .mood .ds{display:block; font-size:11.5px; line-height:1.65; color:var(--fg-3); margin-top:8px;
+            position:relative}
+
+  /* ---------- player ---------- */
+  .player{
+    margin-top:18px; display:flex; flex-wrap:wrap; overflow:hidden; position:relative;
+    background:linear-gradient(125deg, var(--panel-2), var(--panel) 50%);
+    border:1px solid var(--line); border-radius:calc(var(--r) + 4px);
+    box-shadow:0 34px 70px -44px rgba(0,0,0,.9);
+  }
+  .player::before{  /* 気分の色の細いハイライトが上辺に走る */
+    content:""; position:absolute; top:0; left:0; right:0; height:1px; z-index:1;
+    background:linear-gradient(90deg, transparent 4%,
+               color-mix(in srgb, var(--a) 55%, transparent) 30%,
+               color-mix(in srgb, var(--a) 55%, transparent) 70%, transparent 96%);
+    opacity:.9; transition:opacity 1s ease;
+  }
+  body.idle .player::before{opacity:.25}
+  .stage{position:relative; background:#000; aspect-ratio:16/9; flex:0 0 380px; max-width:380px}
+  .stage iframe{position:absolute; inset:0; width:100%; height:100%; border:0}
+  .stage .idle-art{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    background:radial-gradient(140% 130% at 28% 18%, #10131b, #07080b);
+  }
+  .stage .idle-art::before{  /* レコードの溝 */
+    content:""; position:absolute; width:148px; height:148px; border-radius:50%;
+    background:repeating-radial-gradient(circle, #161a24 0 2px, #0b0d13 2px 5px);
+    opacity:.75;
+  }
+  .stage .idle-art svg{
+    position:relative; width:148px; height:148px;
+    color:color-mix(in srgb, var(--a) 34%, #2b303b);
+    transition:color 1s ease;
+  }
+
+  .deck{flex:1 1 340px; display:flex; flex-direction:column; justify-content:space-between;
+        gap:20px; padding:26px 28px; border-left:1px solid var(--line); min-width:0}
+  @media (max-width:820px){
+    .stage{flex-basis:100%; max-width:none}
+    .deck{border-left:0; border-top:1px solid var(--line); padding:20px}
+  }
+
+  .np{min-width:0}
+  .np .eq{display:flex; align-items:flex-end; gap:3px; height:18px; margin-bottom:13px}
+  .np .eq b{
+    width:3px; border-radius:2px; background:var(--a); opacity:.9;
+    animation:eq 1.1s ease-in-out infinite alternate; height:5px;
+    box-shadow:0 0 8px -2px var(--a);
+  }
+  .np .eq b:nth-child(1){animation-duration:1.05s}
+  .np .eq b:nth-child(2){animation-duration:.72s;  animation-delay:-.2s}
+  .np .eq b:nth-child(3){animation-duration:1.35s; animation-delay:-.5s}
+  .np .eq b:nth-child(4){animation-duration:.88s;  animation-delay:-.1s}
+  .np .eq b:nth-child(5){animation-duration:1.18s; animation-delay:-.7s}
+  .np .eq b:nth-child(6){animation-duration:.79s;  animation-delay:-.35s}
+  .np .eq b:nth-child(7){animation-duration:1.26s; animation-delay:-.85s}
+  @keyframes eq{ from{height:3px} to{height:18px} }
+  body.idle .np .eq b{animation-play-state:paused; height:3px; opacity:.3; box-shadow:none}
+  @media (prefers-reduced-motion:reduce){ .np .eq b{animation:none; height:9px} }
+
+  .np .t{font:400 23px/1.45 var(--serif); letter-spacing:.03em; color:var(--fg);
+         display:-webkit-box; -webkit-line-clamp:2; line-clamp:2; -webkit-box-orient:vertical;
+         overflow:hidden}
+  .np .c{font-size:10.5px; letter-spacing:.22em; text-transform:uppercase; color:var(--fg-3);
+         margin-top:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .np .note{font-size:12px; color:var(--fg-3); margin-top:12px}
+  .np .note button{margin-left:8px}
+
+  .controls{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+  .knob{display:flex; align-items:center; gap:9px; font:400 9.5px/1 var(--sans);
+        letter-spacing:.24em; text-transform:uppercase; color:var(--fg-4)}
+  input[type=range]{
+    -webkit-appearance:none; appearance:none; width:96px; height:3px; border-radius:2px;
+    background:var(--line-2); outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:12px; height:12px; border-radius:50%;
+    background:var(--a); cursor:pointer; border:0;
+    box-shadow:0 0 0 4px color-mix(in srgb, var(--a) 18%, transparent);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:12px; height:12px; border-radius:50%; background:var(--a); cursor:pointer; border:0;
+  }
+  input[type=range]:disabled{opacity:.3}
+
+  select,input[type=text]{
+    background:var(--panel-3); color:var(--fg); border:1px solid var(--line-2);
+    border-radius:10px; padding:7px 11px; font:inherit; font-size:13px;
+    transition:border-color .2s, box-shadow .2s;
+  }
+  select:focus,input:focus{outline:none; border-color:var(--a);
+    box-shadow:0 0 0 3px color-mix(in srgb, var(--a) 16%, transparent)}
+
+  .b{
+    background:transparent; color:var(--fg-2); border:1px solid var(--line-2); border-radius:999px;
+    padding:8px 17px; font:500 11px/1.3 var(--sans); letter-spacing:.14em; text-transform:uppercase;
+    cursor:pointer; text-decoration:none;
+    display:inline-flex; align-items:center; gap:6px; white-space:nowrap;
+    transition:color .2s, border-color .2s, background .2s, box-shadow .2s;
+  }
+  .b:hover{color:var(--fg); border-color:var(--a); box-shadow:0 0 16px -7px var(--a)}
+  .b.pri{background:var(--a); border-color:var(--a); color:#07080b; font-weight:600}
+  .b.pri:hover{filter:brightness(1.1); color:#07080b; box-shadow:0 0 20px -6px var(--a)}
+  .b.sm{padding:5px 12px; font-size:9.5px}
+  .b.dg:hover{color:#e8767c; border-color:#e8767c; box-shadow:0 0 16px -7px #e8767c}
+  a{color:var(--a); text-decoration:none}
+  a:hover{text-decoration:underline}
+
+  /* ---------- by url ---------- */
+  .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
+  .row input[type=text]{flex:1 1 340px; padding:10px 15px; border-radius:999px}
+  .hint{color:var(--fg-3); font-size:12px; margin-top:11px; line-height:1.8}
+  .hint code{background:var(--panel); border:1px solid var(--line); border-radius:5px;
+             padding:1px 6px; font-size:11.5px; color:var(--fg-2)}
+  .chips{display:flex; flex-wrap:wrap; gap:8px; margin-top:14px}
+  .chip{display:flex; align-items:center; gap:7px; background:var(--panel); border:1px solid var(--line);
+        border-radius:999px; padding:5px 14px; font-size:12.5px; cursor:pointer; color:var(--fg-2);
+        transition:color .2s, border-color .2s}
+  .chip::before{content:""; width:4px; height:4px; border-radius:50%; background:var(--fg-4); flex:none;
+                transition:background .2s}
+  .chip:hover{color:var(--fg); border-color:var(--line-2)}
+  .chip:hover::before{background:var(--a)}
+
+  /* 追加パネル・編集パネル共通の部品 */
+  .fields{display:flex; gap:12px; flex-wrap:wrap; margin-top:14px}
+  .fields label{flex:1 1 240px; display:block}
+  .fields span{display:block; font:400 9.5px/1 var(--sans); letter-spacing:.24em;
+               text-transform:uppercase; color:var(--fg-4); margin-bottom:7px}
+  .fields input{width:100%}
+  .fields select{width:100%}
+  .lbl{font:400 9.5px/1 var(--sans); letter-spacing:.24em; text-transform:uppercase;
+       color:var(--fg-4); margin:18px 0 9px}
+  .acts{display:flex; gap:9px; margin-top:18px}
+
+  .addpanel{margin-top:14px; padding:6px 22px 20px; border:1px solid var(--line-2);
+            border-radius:var(--r); background:var(--panel)}
+
+  /* 気分チップ（選択用） */
+  .mpick{display:flex; flex-wrap:wrap; gap:7px}
+  .mchip{background:transparent; border:1px solid var(--line-2); color:var(--fg-3);
+         border-radius:999px; padding:4px 13px; font:inherit; font-size:11.5px; cursor:pointer;
+         transition:color .15s, border-color .15s, box-shadow .15s}
+  .mchip:hover{color:var(--fg-2); border-color:var(--h)}
+  .mchip.on{color:var(--h); border-color:var(--h); box-shadow:0 0 12px -6px var(--h)}
+
+  /* 気分タグ（表示用） */
+  .tags{display:flex; flex-wrap:wrap; gap:9px; flex:none}
+  .mtag{display:inline-flex; align-items:center; gap:5px; font-size:10.5px; color:var(--fg-2);
+        letter-spacing:.04em; white-space:nowrap}
+  .mtag::before{content:""; width:5px; height:5px; border-radius:50%; background:var(--h); flex:none;
+                box-shadow:0 0 6px -1px var(--h)}
+  .tags .none{font-size:10.5px; color:var(--fg-4); letter-spacing:.04em}
+
+  /* ---------- library ---------- */
+  .src{border:1px solid var(--line); border-radius:var(--r); background:var(--panel); overflow:hidden}
+  .srow{display:flex; align-items:center; gap:14px; padding:11px 18px;
+        border-top:1px solid var(--line); font-size:13px; transition:background .15s}
+  .srow:hover{background:var(--panel-2)}
+  .src > div:first-child{border-top:0}
+  .srow .dot{width:6px; height:6px; border-radius:999px; background:var(--fg-4); flex:none}
+  .srow.ok .dot{background:#6ec18c; box-shadow:0 0 8px -1px #6ec18c}
+  .srow.ng .dot{background:#8a5b5b}
+  .srow .meta{flex:1; min-width:0}
+  .srow .tt{display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .srow .cc{display:block; color:var(--fg-3); font-size:11px; letter-spacing:.06em;
+            white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px}
+  .srow .kind{font:400 9px/1 var(--sans); letter-spacing:.18em; color:var(--fg-3);
+              border:1px solid var(--line-2); border-radius:4px; padding:3px 6px 2px; flex:none}
+  .srow .kind.mine{color:var(--a); border-color:var(--a)}
+  .srow .kind.edited{color:#c2a96c; border-color:#c2a96c}
+  .srow .ac{display:flex; gap:7px; flex:none}
+  .srow.ng{opacity:.45}
+  .srow.ng .tt{text-decoration:line-through}
+  .sedit{padding:2px 18px 18px; background:var(--panel-3); border-top:1px solid var(--line)}
+  .ederr{margin-top:12px; font-size:12px; color:#e0a3a7}
+  @media (max-width:820px){
+    .srow{flex-wrap:wrap}
+    .srow .meta{flex:1 1 100%; order:1}
+    .srow .dot{order:0}
+    .srow .tags{order:2} .srow .kind{order:3} .srow .ac{order:4; margin-left:auto}
+  }
+
+  .libbar{display:flex; align-items:center; gap:9px; flex-wrap:wrap; margin:4px 0 16px}
+  .srvmsg{font-size:11.5px; color:var(--fg-3); letter-spacing:.04em}
+  .srvmsg.ok{color:#6ec18c}
+  .srvmsg.ng{color:#d5b05f}
+  .exportbox{width:100%; min-height:220px; margin-top:14px; padding:14px;
+             background:#05070a; color:var(--fg-2); border:1px solid var(--line-2);
+             border-radius:12px; font:12px/1.7 var(--mono); resize:vertical; white-space:pre}
+
+  details{border:1px solid var(--line); border-radius:var(--r); background:var(--panel);
+          padding:0 22px; margin-top:12px}
+  summary{cursor:pointer; padding:16px 0; font-size:13.5px; color:var(--fg-2); list-style:none;
+          transition:color .2s}
+  summary::-webkit-details-marker{display:none}
+  summary::before{content:"＋　"; color:var(--fg-4)}
+  details[open] summary::before{content:"−　"}
+  details[open] summary{color:var(--fg)}
+  summary:hover{color:var(--fg)}
+  details .body{padding:4px 0 20px; border-top:1px solid var(--line); margin-top:3px;
+                color:var(--fg-2); font-size:13px}
+  ol,ul{padding-left:20px; margin:10px 0}
+  li{margin:6px 0}
+  code{font-size:12px; font-family:var(--mono)}
+  .warn{color:#d5b05f}
+  footer{margin-top:70px; padding-top:26px; border-top:1px solid var(--line); text-align:center;
+         color:var(--fg-4); font:400 10px/1 var(--sans); letter-spacing:.46em; text-indent:.46em}
+
+  @media (max-width:480px){
+    .mark h1{font-size:32px}
+    .mark svg{width:32px; height:32px}
+    .wrap{padding:32px 18px 70px}
+  }
+</style>
+</head>
+<body class="idle">
+<div class="glow"></div>
+<div class="glow2"></div>
+<div class="grain"></div>
+<div class="wrap">
+
+  <header>
+    <div class="mark">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+        <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/>
+        <path d="M8.6 15.4a4.8 4.8 0 0 1 0-6.8M15.4 8.6a4.8 4.8 0 0 1 0 6.8"/>
+        <path d="M5.6 18.4a9 9 0 0 1 0-12.8M18.4 5.6a9 9 0 0 1 0 12.8"/>
+      </svg>
+      <div>
+        <h1>Room Tone</h1>
+        <div class="tag">TUNE THE ROOM</div>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <div class="keys">Keys <b>1–8</b> mood <b>0</b> stop</div>
+  </header>
+
+  <div class="alert" id="fileWarn" hidden>
+    <b>file:// で開いています。この状態ではYouTubeが再生できません（Error 153）。</b><br>
+    YouTubeの埋め込みは有効な HTTP リファラを要求します。Webサーバ経由（<code>http://…/bgm.html</code>）で開いてください。
+  </div>
+
+  <div class="sec">
+    <span class="idx">01</span><h2>Mood</h2><span class="rule"></span>
+    <button class="linkbtn" id="omakase">Surprise me</button>
+  </div>
+  <div class="moods" id="moods"></div>
+
+  <div class="player">
+    <div class="stage" id="stage">
+      <div class="idle-art">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
+          <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.6"/>
+        </svg>
+      </div>
+    </div>
+    <div class="deck">
+      <div class="np">
+        <div class="eq"><b></b><b></b><b></b><b></b><b></b><b></b><b></b></div>
+        <div class="t" id="npT">Nothing playing</div>
+        <div class="c" id="npC">Pick a mood, or paste a URL below</div>
+        <div class="note" id="npNote" hidden></div>
+      </div>
+      <div class="controls">
+        <span class="knob">Vol <input type="range" id="vol" min="0" max="100" value="45" disabled></span>
+        <span class="knob">Sleep
+          <select id="timer">
+            <option value="0">—</option>
+            <option value="25">25 min</option>
+            <option value="45">45 min</option>
+            <option value="60">60 min</option>
+            <option value="90">90 min</option>
+            <option value="120">120 min</option>
+          </select>
+          <span id="left" style="letter-spacing:.06em"></span>
+        </span>
+        <button class="b" id="again">Another</button>
+        <button class="b" id="stop">Stop</button>
+        <a class="b" id="open" href="#" target="_blank" rel="noopener" hidden>YouTube ↗</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec"><span class="idx">02</span><h2>By URL</h2><span class="rule"></span></div>
+  <div class="row">
+    <input type="text" id="url" placeholder="Paste a YouTube URL — video, live stream or playlist" spellcheck="false">
+    <button class="b pri" id="playUrl">Play</button>
+    <button class="b" id="addBtn">Add to library</button>
+  </div>
+  <div class="hint">
+    <code>youtu.be/…</code>　<code>watch?v=</code>　<code>/live/</code>　<code>playlist?list=</code>　動画ID直打ち　に対応。
+    Add to library で、気分（ジャンル）を選んで登録できます。
+  </div>
+
+  <div class="addpanel" id="addPanel" hidden>
+    <div class="fields">
+      <label><span>Title</span><input type="text" id="addT" spellcheck="false"></label>
+      <label><span>Channel</span><input type="text" id="addC" spellcheck="false"></label>
+    </div>
+    <div class="lbl">Moods — 選んだ気分のローテーションに入ります（未選択なら Library からの再生のみ）</div>
+    <div id="addMoods"></div>
+    <div class="acts">
+      <button class="b pri" id="addOk">Add</button>
+      <button class="b" id="addCancel">Cancel</button>
+    </div>
+  </div>
+
+  <div class="chips" id="favs"></div>
+
+  <div class="sec"><span class="idx">03</span><h2>Library</h2><span class="rule"></span></div>
+  <details id="srcDetails">
+    <summary><span id="srcSummary">Library</span></summary>
+    <div class="body">
+      <p class="hint" style="margin:12px 0 14px">
+        各行の丸印がそのソースの所属ジャンルです。<b>Moods</b> で所属を編集、<b>Disable</b> で
+        ローテーションから除外、自分で追加したもの（MINE）は Moods パネルの Delete で完全に削除できます。
+        編集内容はこのブラウザに保存され、<b>Export</b> で HTML に書き戻すためのコードが出ます。
+        <br>
+        なお 24時間ライブ配信は配信終了でIDごと消えます。再生に失敗したソースは自動でオフにして
+        次の候補に切り替え、7日後にもう一度試します（手動 Disable の方は期限なしで外れたままです）。
+      </p>
+      <div class="libbar">
+        <button class="b sm" id="saveSrv">Save to server</button>
+        <button class="b sm" id="exportBtn">Export</button>
+        <button class="b sm" id="reviveAll">Enable all</button>
+        <span class="srvmsg" id="srvMsg"></span>
+      </div>
+      <textarea class="exportbox" id="exportBox" hidden readonly spellcheck="false"></textarea>
+      <div class="src" id="catalog"></div>
+    </div>
+  </details>
+
+  <div class="sec"><span class="idx">04</span><h2>How to use</h2><span class="rule"></span></div>
+  <details>
+    <summary>Adding, moving and removing sources</summary>
+    <div class="body">
+      <p><b>A. この画面から（手軽・このブラウザにだけ保存）</b></p>
+      <ol>
+        <li>By URL にYouTubeのURLを貼り、<b>Add to library</b> を押す。タイトルとチャンネルは自動取得を試みます。</li>
+        <li>入れたい気分のチップを選んで <b>Add</b>。以後その気分のローテーションに入ります。</li>
+        <li>Library の各行の <b>Edit</b> で、タイトル・チャンネル・<b>URL</b>・種別・所属ジャンルを
+            まとめて直せます。配信が終わってIDが変わったソースは、ここに新しいURLを貼れば復活します。</li>
+        <li>要らないソースは各行の <b>Disable</b> で気分のローテーションから外れます。自分で追加したものは
+            Edit パネルの <b>Delete</b> で完全に消せます。まとめて戻すときは <b>Enable all</b>。</li>
+        <li>組み込みソースを編集すると <b>EDITED</b> と表示され、Edit パネルの <b>Revert</b> で
+            HTMLに書かれた元の内容に戻せます。</li>
+        <li>ここまでの変更はこのブラウザにしか残らないので、確定したら Library の
+            <b>Save to server</b> を押す。サーバの <code>sources.json</code> に書き出され、
+            以後はどのブラウザで開いても同じ内容になります（未保存の変更があるとボタンが色付きに
+            なります。書き込み先が無い環境では代わりにダウンロードされるので、bgm.html と
+            同じ場所に置けば同じことです）。</li>
+      </ol>
+      <p style="margin-top:16px"><b>B. HTMLを直接編集（サーバに恒久的に残す）</b></p>
+      <ol>
+        <li>末尾の <code>CATALOG</code> に1行足す。
+          <br><code>mykey : {t:'表示名', c:'チャンネル名', v:'動画ID11桁', k:'vod'},</code></li>
+        <li><code>MOODS</code> の入れたい気分の <code>ids</code> に <code>'mykey'</code> を書き足す。複数の気分に入れて構いません。</li>
+        <li>プレイリストを登録したいときは <code>v</code> の代わりに <code>p:'PLxxxx…'</code> を書きます。</li>
+        <li>A でUIから足したものは <b>Export</b> でこの形のコードが出るので、それをそのまま貼れば恒久化できます。</li>
+      </ol>
+      <p class="hint" style="margin-top:14px">
+        ライブ配信より、数時間の通常動画（vod）の方が長生きします。海外レーベルのチャンネルは
+        日本から埋め込み再生できないことがあるので、迷ったら日本のチャンネルの長時間版が確実です。
+      </p>
+    </div>
+  </details>
+
+  <footer>ROOM TONE</footer>
+</div>
+
+<script>
+/* ============================================================
+   ソースカタログ
+     t: タイトル  c: チャンネル  v: YouTube動画ID（または p: プレイリストID）
+     k: 'live' | 'vod'
+   ライブ配信は終了するとIDごと消えます。vod（通常の長時間動画）の方が長持ちします。
+   ============================================================ */
+const CATALOG = {
+  /* --- lo-fi / chill --------------------------------------- */
+  lofi_study : {t:'lofi hip hop radio 📚 beats to relax/study to', c:'Lofi Girl',              v:'jfKfPfyJRdk', k:'live'},
+  lofi_sleep : {t:'lofi hip hop radio 😴 beats to sleep/chill to', c:'Lofi Girl',              v:'JD-kMIpDfnY', k:'live'},
+  lofi_jazz  : {t:'jazz lofi radio 🎷 beats to chill/study to',    c:'Lofi Girl',              v:'E2vONfzoyRI', k:'live'},
+  synthwave  : {t:'synthwave radio 🌌 beats to chill/game to',     c:'Lofi Girl',              v:'4xDzrJKXOOY', k:'live'},
+  chillhop   : {t:'Chillhop Radio – jazzy & lofi hip hop beats',   c:'Chillhop Music',         v:'5yx6BWlEVcY', k:'live'},
+
+  /* --- jazz / cafe ----------------------------------------- */
+  jazzpiano  : {t:'Relaxing Jazz Piano Radio – Slow Jazz 24/7',    c:'Cafe Music BGM channel', v:'Dx5qFachd3A', k:'live'},
+  rainyjazz  : {t:'Rainy Jazz – Jazz & Bossa Nova 24/7',           c:'Cafe Music BGM channel', v:'DSGyEsJ17cI', k:'live'},
+  morncafe   : {t:'Happy Morning Cafe Music – Jazz & Bossa Nova',  c:'Cafe Music BGM channel', v:'GkqhHEAy1zw', k:'vod'},
+  morncoffee : {t:'Morning Coffee Music – Breakfast Jazz',         c:'Cafe Music BGM channel', v:'e6KzjUOfmBk', k:'vod'},
+  goodmood   : {t:'Good Mood Coffee Jazz – Happy Bossa Nova',      c:'Cafe Music BGM channel', v:'Fqll4Tws-8E', k:'vod'},
+
+  /* --- focus ----------------------------------------------- */
+  flowstate  : {t:'Deep Focus Music 24/7 – Live Radio',            c:'FLOWSTATE DEEP',         v:'6tH1eaEnyMI', k:'live'},
+  hyperfocus : {t:'Hyperfocus Music 24/7 – Deep Work / Coding',    c:'Hyperfocus Night Office',v:'YOF0AEY1G1U', k:'live'},
+  deepwork   : {t:'Deep Work Music – Ambient for Peak Focus',      c:'Deep Work Yellow',       v:'5_ted84Xjos', k:'vod'},
+
+  /* --- lift / japan ---------------------------------------- */
+  soulfunk   : {t:'Soul Funk Lounge Radio 24/7',                   c:'Mellow Funk',            v:'2gU2-TEB0RE', k:'live'},
+  dailyfunk  : {t:'Daily Funk Radio – Funk, Soul & Groove 24/7',   c:'Daily Funk',             v:'GSa6E6LiDik', k:'live'},
+  nudisco    : {t:'Nu Disco Mix – Funky, Groovy & Modern Disco',   c:'Alberto Altieri',        v:'_luOH0Qqp5I', k:'vod'},
+  acidjazz   : {t:'Deep Bass Groove – Acid Jazz & Nu Jazz',        c:'Nu Velvet Jazz',         v:'Jd4rNuWpF9o', k:'vod'},
+  citypop    : {t:'Citypop Radio – 80s Japanese Disco 24/7',       c:'City Pop 永遠',          v:'vZ-Q7lM5Sv8', k:'live'},
+
+  /* --- classical ------------------------------------------- --
+     海外レーベル系（HALIDONMUSIC 等）は日本から埋め込み再生できないことがあるため、
+     日本のチャンネルが上げている長時間版に差し替え済み。 */
+  cls_gentle : {t:'穏やかなクラシック名曲集 3時間（4K）',           c:'Relaxing Classical Music', v:'RKoDhyT_WJg', k:'vod'},
+  cls_work   : {t:'仕事・勉強・作業がはかどるクラシック名曲集',      c:'nene1m Sonicx',          v:'mvWB4yygnP4', k:'vod'},
+  cls_focus  : {t:'集中力が高まるクラシック名曲集',                 c:'nene1m Sonicx',          v:'eB_dcHcSgdo', k:'vod'},
+  cls_piano  : {t:'癒しのクラシック名曲集 ピアノメドレー',           c:'クラシック＋アラモード',   v:'vEOi88-5ZNA', k:'vod'},
+
+  /* --- nature ---------------------------------------------- */
+  nat_forest : {t:'癒しの森の音［鳥のさえずり］静かな森の朝',        c:'Nature Sounds nagomi',   v:'WbZt27uq49c', k:'vod'},
+  nat_spring : {t:'森の水源に広がる水の音・鳥のさえずり（4K）',      c:'Comforting care',        v:'B4HmrJjS1MM', k:'vod'},
+  nat_lake   : {t:'湖畔の新緑・鳥のさえずり',                      c:'まいたびチャンネル',       v:'gaS53TDKxUs', k:'vod'},
+  nat_rain10 : {t:'雨の音・大雨の音 10時間',                       c:'SST Nature Sounds',      v:'nO5vN8TdGwI', k:'vod'},
+  nat_rain8  : {t:'雨音 8時間 — 深い眠り・環境音',                 c:'Natural Rain Sounds',    v:'WYTSN7tLAEk', k:'vod'},
+  nat_fire8  : {t:'焚き火の音 8時間版',                            c:'宗谷朋樹 / Tomoki Sawyer', v:'JUbpV2nd0Bg', k:'vod'},
+  nat_fire4k : {t:'焚き火のパチパチ音 3時間（4K Fireplace）',        c:'Trip Meditation',        v:'0bcwycykgpQ', k:'vod'},
+  nat_firewt : {t:'焚き火の音 × 水の音',                           c:'Nature Sounds nagomi',   v:'wH46EQXHljs', k:'vod'},
+
+  /* --- misc ------------------------------------------------- */
+  rainpiano  : {t:'Rain & Piano – Relaxing Music 24/7',            c:'Ocb Relax',              v:'9PgkeuyY4hs', k:'live'},
+};
+
+/* 気分（ジャンル）。ids は候補で、1本目がだめなら自動で次を試します。 */
+const MOODS = [
+  {k:'deep',  c:'#7089c4', en:'Deep Focus', nm:'集中',         ds:'歌なし・展開少なめ。深く潜る',
+   ic:'target',  ids:['flowstate','deepwork','hyperfocus','cls_focus']},
+  {k:'loose', c:'#c9975f', en:'Easy Work',  nm:'ながら作業',    ds:'lo-fi。手は動くが、邪魔はしない',
+   ic:'phones',  ids:['lofi_study','chillhop','lofi_jazz','jazzpiano']},
+  {k:'morn',  c:'#d98467', en:'Morning',    nm:'朝',           ds:'コーヒーと一緒に、少しだけ明るく',
+   ic:'sunrise', ids:['morncafe','morncoffee','goodmood']},
+  {k:'cafe',  c:'#87a877', en:'Afternoon',  nm:'昼下がり',      ds:'ジャズとボサノバ。部屋の温度を上げる',
+   ic:'cup',     ids:['jazzpiano','rainyjazz','goodmood','chillhop']},
+  {k:'up',    c:'#a377cc', en:'Uptempo',    nm:'アップテンポ',   ds:'ファンク、ソウル、シティポップ',
+   ic:'bolt',    ids:['soulfunk','dailyfunk','nudisco','acidjazz','synthwave','citypop']},
+  {k:'nat',   c:'#4f9e8c', en:'Nature',     nm:'自然',          ds:'森と鳥、雨、焚火。音楽ではない音',
+   ic:'leaf',    ids:['nat_forest','nat_rain8','nat_fire8','nat_spring','nat_rain10','nat_fire4k','nat_lake','nat_firewt']},
+  {k:'cls',   c:'#c2a96c', en:'Classical',  nm:'クラシック',     ds:'来客時。頭の中を静かにする',
+   ic:'note',    ids:['cls_gentle','cls_piano','cls_work','cls_focus']},
+  {k:'night', c:'#7b83cf', en:'Late Night', nm:'夜更け',        ds:'眠くなる寸前くらいの静けさ',
+   ic:'moon',    ids:['lofi_sleep','rainpiano','nat_fire8','cls_piano','nat_rain8']},
+];
+
+const ICONS = {
+  target : '<circle cx="12" cy="12" r="8.2"/><circle cx="12" cy="12" r="3.6"/><circle cx="12" cy="12" r=".9" fill="currentColor" stroke="none"/>',
+  phones : '<path d="M4 14.5v-2.2a8 8 0 0 1 16 0v2.2"/><rect x="2.4" y="13.6" width="4.2" height="6.6" rx="2.1"/><rect x="17.4" y="13.6" width="4.2" height="6.6" rx="2.1"/>',
+  sunrise: '<path d="M2.5 20h19"/><path d="M7 20a5 5 0 0 1 10 0"/><path d="M12 3.5v3M5.6 7.1l2.1 2.1M18.4 7.1l-2.1 2.1M2 14.2h2.6M19.4 14.2H22"/>',
+  cup    : '<path d="M4.2 9.2h12.4v5.6a4.4 4.4 0 0 1-4.4 4.4H8.6a4.4 4.4 0 0 1-4.4-4.4V9.2z"/><path d="M16.6 10.7h1.6a2.6 2.6 0 0 1 0 5.2h-1.6"/><path d="M8 3.4v2.6M12.4 3.4v2.6"/>',
+  bolt   : '<path d="M13.4 3 5.8 13.6h5.3L10.2 21l7.8-10.8h-5.4L13.4 3z"/>',
+  torii  : '<path d="M2.6 6.4h18.8M4.4 9.6h15.2"/><path d="M6.6 9.6V20.5M17.4 9.6V20.5"/><path d="M6.6 13.2h10.8"/>',
+  leaf   : '<path d="M4.9 19.4C3.1 12.2 8.2 4.7 19.9 4.2c.5 11.7-7.7 17-15 15.2z"/><path d="M4.2 20.2 13.6 10.6"/><path d="M13.6 10.6h-3.9M13.6 10.6V6.7"/>',
+  note   : '<circle cx="6.8" cy="17.4" r="2.9"/><circle cx="17.2" cy="15.4" r="2.9"/><path d="M9.7 17.4V6.9l10.4-2.1v10.6"/><path d="M9.7 10.2l10.4-2.1"/>',
+  moon   : '<path d="M20.2 14.6A8.6 8.6 0 0 1 9.4 3.8a8.6 8.6 0 1 0 10.8 10.8z"/>',
+};
+const svg = n => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" ' +
+                 'stroke-linecap="round" stroke-linejoin="round">' + (ICONS[n] || '') + '</svg>';
+
+/* ============================================================ */
+const $ = s => document.querySelector(s);
+const OVER_HTTP = /^https?:$/.test(location.protocol);
+if(!OVER_HTTP) $('#fileWarn').hidden = false;
+
+const stage = $('#stage'), npT = $('#npT'), npC = $('#npC'), npNote = $('#npNote');
+const volEl = $('#vol'), timerEl = $('#timer'), leftEl = $('#left'), openEl = $('#open');
+const DEAD_TTL = 7 * 24 * 60 * 60 * 1000;   // disabled 印は7日で自動的に消す
+
+let player = null, current = null, currentKey = null;
+let queue = [], activeMood = null, lastKey = null;
+let timerId = null, endsAt = 0, watchdog = null, gotSignal = false;
+
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+};
+
+/* ============================================================
+   ソース集合と、ジャンル（気分）への所属
+     - CATALOG          : HTMLに書かれた組み込みソース
+     - bgm.user         : この画面から足したソース
+     - bgm.moods        : 所属の上書き（キー → 気分キーの配列）
+   所属は「上書きがあればそれ、無ければ MOODS の ids から算出」。
+   ============================================================ */
+const BUILTIN_OF = {};
+MOODS.forEach(m => m.ids.forEach(k => { (BUILTIN_OF[k] = BUILTIN_OF[k] || []).push(m.k); }));
+
+const userSources  = () => store.get('bgm.user', {});
+const editMap      = () => store.get('bgm.edits', {});
+const overrides    = () => store.get('bgm.moods', {});
+const moodByKey    = k => MOODS.filter(m => m.k === k)[0];
+
+/* 組み込みソース（CATALOG）＋ その上書き（bgm.edits）＋ 自分で足したもの（bgm.user） */
+function allSources(){
+  const merged = Object.assign({}, CATALOG);
+  const ed = editMap();
+  Object.keys(ed).forEach(k => { if(merged[k]) merged[k] = Object.assign({}, ed[k]); });
+  return Object.assign(merged, userSources());
+}
+const isMine  = k => Object.prototype.hasOwnProperty.call(userSources(), k);
+const hasEdit = k => Object.prototype.hasOwnProperty.call(editMap(), k);
+
+/* 1件ぶんの内容を保存。自分で足したものは bgm.user、組み込みは上書きレイヤへ。 */
+function saveEntry(key, entry){
+  if(isMine(key)){
+    const u = userSources(); u[key] = entry; store.set('bgm.user', u);
+  } else {
+    const e = editMap(); e[key] = entry; store.set('bgm.edits', e);
+  }
+  markDirty();
+}
+/* 組み込みソースの上書きを捨てて、HTMLに書かれた元の内容へ戻す */
+function revertEntry(key){
+  const e = editMap(); delete e[key]; store.set('bgm.edits', e); markDirty();
+}
+
+function moodsOf(key){
+  const o = overrides();
+  if(Object.prototype.hasOwnProperty.call(o, key)) return o[key].slice();
+  return (BUILTIN_OF[key] || []).slice();
+}
+function setMoodsOf(key, arr){
+  const o = overrides(); o[key] = arr.slice(); store.set('bgm.moods', o); markDirty();
+}
+function poolFor(moodKey){
+  const all = allSources();
+  return Object.keys(all).filter(k => moodsOf(k).indexOf(moodKey) >= 0);
+}
+function srcOf(entry){
+  return entry.p ? {type:'list', id:entry.p} : {type:'video', id:entry.v};
+}
+function userKey(src){
+  return 'u_' + String(src.id).replace(/[^A-Za-z0-9]/g, '_');
+}
+
+/* 旧「お気に入り」からの移行（1度だけ） */
+(function migrateFavs(){
+  const favs = store.get('bgm.favs', null);
+  if(!favs || !favs.length) return;
+  const u = userSources();
+  favs.forEach(f => {
+    const s = parseYT(f.url); if(!s) return;
+    const k = userKey(s);
+    if(!u[k]) u[k] = s.type === 'list'
+      ? {t:f.label, c:'', p:s.id, k:'mine'}
+      : {t:f.label, c:'', v:s.id, k:'mine'};
+  });
+  store.set('bgm.user', u);
+  store.set('bgm.favs', []);
+})();
+
+/* ---- 失敗したソースの記録 ---- */
+function deadMap(){
+  const m = store.get('bgm.dead', {}), now = Date.now();
+  let changed = false;
+  for(const k in m){ if(now - m[k] > DEAD_TTL){ delete m[k]; changed = true; } }
+  if(changed) store.set('bgm.dead', m);
+  return m;
+}
+function isDead(k){ return Object.prototype.hasOwnProperty.call(deadMap(), k); }
+function markDead(k){ const m = deadMap(); m[k] = Date.now(); store.set('bgm.dead', m); renderCatalog(); }
+function revive(k){ const m = deadMap(); delete m[k]; store.set('bgm.dead', m); renderCatalog(); }
+function reviveMany(keys){
+  const m = deadMap(); keys.forEach(k => { delete m[k]; }); store.set('bgm.dead', m);
+}
+
+/* 手で止めたソース（自動の失敗印と違い、期限なしで外れたままになる） */
+const hiddenMap = () => store.get('bgm.off', {});
+function isHidden(k){ return !!hiddenMap()[k]; }
+function setHidden(k, v){
+  const m = hiddenMap();
+  if(v) m[k] = 1; else delete m[k];
+  store.set('bgm.off', m); markDirty();
+}
+/* 気分のローテーションから外れている＝自動失敗 or 手動オフ */
+function isOff(k){ return isDead(k) || isHidden(k); }
+
+/* ============================================================
+   サーバ側 sources.json との同期
+     読み込み : ページを開いたとき sources.json があれば、それで
+                localStorage を上書きする（サーバ側が正）。
+     保存     : save.php があれば POST して書き込む。無ければ
+                sources.json をダウンロードするので、それを共有
+                フォルダに置けば同じことになる。
+   ※ 対象はソースと気分の割り当てだけ。HTML本体（デザインやロジック）は
+      差し替えが必要で、そちらは仕組み上ここからは変更できない。
+   ============================================================ */
+let dirty = false;
+
+function currentState(){
+  return {
+    version: 1,
+    user:  userSources(),          // 自分で足したソース
+    edits: editMap(),              // 組み込みソースの上書き
+    moods: overrides(),            // 気分への所属
+    off:   Object.keys(hiddenMap())// 手で止めたソース
+  };
+}
+function markDirty(){
+  dirty = true;
+  const b = document.getElementById('saveSrv');
+  if(b) b.classList.add('pri');
+}
+function srvMsg(text, cls){
+  const e = document.getElementById('srvMsg');
+  if(!e) return;
+  e.textContent = text || '';
+  e.className = 'srvmsg' + (cls ? ' ' + cls : '');
+}
+function loadFromServer(){
+  return fetch('sources.json?_=' + Date.now(), {cache:'no-store'})
+    .then(r => r.ok ? r.json() : null)
+    .then(j => {
+      if(!j || typeof j !== 'object') return false;
+      store.set('bgm.user',  j.user  || {});
+      store.set('bgm.edits', j.edits || {});
+      store.set('bgm.moods', j.moods || {});
+      const off = {}; (j.off || []).forEach(k => { off[k] = 1; });
+      store.set('bgm.off', off);
+      srvMsg('sources.json を読み込みました' + (j.updated ? '　' + j.updated : ''));
+      return true;
+    })
+    .catch(() => false);
+}
+function downloadState(){
+  try{
+    const blob = new Blob([JSON.stringify(currentState(), null, 2)], {type:'application/json'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = 'sources.json';
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  }catch(e){}
+}
+function postState(url){
+  return fetch(url, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(currentState())
+  }).then(r => {
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json().catch(() => ({}));
+  });
+}
+function saveToServer(){
+  srvMsg('保存中…');
+  /* bgm_server.py なら /save、PHP版なら save.php。どちらも無ければダウンロード。 */
+  postState('save')
+    .catch(() => postState('save.php'))
+    .then(j => {
+      dirty = false;
+      const b = document.getElementById('saveSrv'); if(b) b.classList.remove('pri');
+      srvMsg('サーバに保存しました' + (j && j.updated ? '　' + j.updated : ''), 'ok');
+    })
+    .catch(() => {
+      srvMsg('書き込み先が無いので sources.json をダウンロードします。bgm.html と同じ場所に置いてください。', 'ng');
+      downloadState();
+    });
+}
+
+/* ---- YouTube IFrame API（http(s) のときだけ意味がある） ---- */
+if(OVER_HTTP){
+  const s = document.createElement('script');
+  s.src = 'https://www.youtube.com/iframe_api'; s.async = true;
+  document.head.appendChild(s);
+}
+
+/* ---- URL 解析 ---- */
+function parseYT(input){
+  const s = (input || '').trim();
+  if(!s) return null;
+  if(/^[\w-]{11}$/.test(s)) return {type:'video', id:s};
+  if(/^(PL|UU|OL|RD)[\w-]{10,}$/.test(s)) return {type:'list', id:s};
+  let u; try{ u = new URL(s); }catch(e){ return null; }
+  const host = u.hostname.replace(/^(www|m|music)\./, '');
+  if(host === 'youtu.be'){
+    const id = u.pathname.slice(1).split('/')[0];
+    return id ? {type:'video', id, list:u.searchParams.get('list')} : null;
+  }
+  if(host !== 'youtube.com') return null;
+  const v = u.searchParams.get('v'), list = u.searchParams.get('list');
+  if(v) return {type:'video', id:v, list};
+  if(list) return {type:'list', id:list};
+  const m = u.pathname.match(/^\/(embed|live|shorts|v)\/([\w-]+)/);
+  if(m) return {type:'video', id:m[2], list};
+  return null;
+}
+function embedUrl(src){
+  const p = new URLSearchParams({autoplay:'1', rel:'0', playsinline:'1', iv_load_policy:'3'});
+  if(OVER_HTTP){ p.set('enablejsapi','1'); p.set('origin', location.origin); }
+  if(src.type === 'list') return 'https://www.youtube.com/embed/videoseries?list=' +
+                                  encodeURIComponent(src.id) + '&' + p.toString();
+  if(src.list) p.set('list', src.list);
+  return 'https://www.youtube.com/embed/' + encodeURIComponent(src.id) + '?' + p.toString();
+}
+function watchUrl(src){
+  return src.type === 'list'
+    ? 'https://www.youtube.com/playlist?list=' + encodeURIComponent(src.id)
+    : 'https://www.youtube.com/watch?v=' + encodeURIComponent(src.id);
+}
+
+/* ---- 色 ---- */
+function setAccent(hex){
+  document.documentElement.style.setProperty('--a', hex);
+  const f = 'data:image/svg+xml,' + encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">' +
+    '<circle cx="16" cy="16" r="9" fill="' + hex + '"/></svg>');
+  let link = document.querySelector('link[rel="icon"]');
+  if(!link){ link = document.createElement('link'); link.rel = 'icon'; document.head.appendChild(link); }
+  link.href = f;
+}
+
+/* ---- 再生 ---- */
+function play(src, title, chan, key){
+  if(player && player.destroy){ try{ player.destroy(); }catch(e){} }
+  player = null; volEl.disabled = true;
+  clearTimeout(watchdog); gotSignal = false;
+  npNote.hidden = true; npNote.innerHTML = '';
+
+  stage.innerHTML = '';
+  const f = document.createElement('iframe');
+  f.id = 'yt';
+  f.src = embedUrl(src);
+  f.allow = 'autoplay; encrypted-media; picture-in-picture';
+  f.allowFullscreen = true;
+  f.referrerPolicy = 'strict-origin-when-cross-origin';
+  stage.appendChild(f);
+
+  current = {src, title, chan}; currentKey = key || null;
+  npT.textContent = title || 'Playing';
+  npC.textContent = chan || '';
+  openEl.href = watchUrl(src); openEl.hidden = false;
+  document.body.classList.remove('idle');
+  document.title = (title ? title + ' — ' : '') + 'Room Tone';
+  renderCatalog();
+
+  if(OVER_HTTP && window.YT && window.YT.Player){
+    try{
+      player = new YT.Player('yt', {events:{
+        onReady: e => {
+          volEl.disabled = false;
+          try{ e.target.setVolume(Number(volEl.value)); }catch(err){}
+        },
+        onStateChange: e => {
+          if(e.data === 1 || e.data === 3){          // PLAYING / BUFFERING
+            gotSignal = true; clearTimeout(watchdog); npNote.hidden = true;
+            if(currentKey) revive(currentKey);
+          }
+        },
+        onError: () => { failCurrent(); }
+      }});
+    }catch(e){ player = null; }
+  }
+
+  /* 12秒たっても何の反応も無ければ聞く（自動スキップは autoplay ブロックで誤爆するのでしない） */
+  watchdog = setTimeout(() => {
+    if(gotSignal) return;
+    npNote.hidden = false;
+    npNote.textContent = 'No sound?';
+    const b = document.createElement('button');
+    b.className = 'b sm'; b.textContent = 'Try the next one';
+    b.addEventListener('click', failCurrent);
+    npNote.appendChild(b);
+  }, 12000);
+}
+
+/* 現在のソースを失敗扱いにして、同じ気分の次の候補へ */
+function failCurrent(){
+  clearTimeout(watchdog);
+  if(currentKey) markDead(currentKey);
+  if(queue.length){ nextCandidate(true); }
+  else {
+    npNote.hidden = false;
+    npNote.textContent = 'None of the candidates would play. Try another mood, or paste a URL.';
+  }
+}
+
+function nextCandidate(skipped){
+  const k = queue.shift();
+  if(!k) return;
+  const s = allSources()[k];
+  if(!s) return;
+  lastKey = k;
+  play(srcOf(s), s.t, s.c + (activeMood ? '　/　' + activeMood.en : ''), k);
+  if(skipped){
+    npNote.hidden = false;
+    npNote.textContent = 'Previous source failed — switched to the next candidate.';
+    setTimeout(() => { if(npNote.textContent.indexOf('switched') >= 0) npNote.hidden = true; }, 6000);
+  }
+}
+
+function shuffle(a){
+  a = a.slice();
+  for(let i = a.length - 1; i > 0; i--){ const j = Math.floor(Math.random() * (i + 1)); [a[i],a[j]] = [a[j],a[i]]; }
+  return a;
+}
+
+function pickFromMood(mood){
+  activeMood = mood;
+  setAccent(mood.c);
+  document.querySelectorAll('.mood').forEach(el => el.classList.toggle('on', el.dataset.k === mood.k));
+
+  const full = poolFor(mood.k);
+  if(!full.length){
+    stop();
+    activeMood = mood; setAccent(mood.c);
+    document.querySelectorAll('.mood').forEach(el => el.classList.toggle('on', el.dataset.k === mood.k));
+    npNote.hidden = false;
+    npNote.textContent = 'この気分にはソースが登録されていません。Library の Moods から追加してください。';
+    return;
+  }
+  let pool = full.filter(k => !isOff(k));
+  if(!pool.length){
+    /* 自動の失敗印だけ解除して再挑戦する。手で止めたものは戻さない。 */
+    reviveMany(full.filter(k => !isHidden(k)));
+    pool = full.filter(k => !isOff(k));
+  }
+  if(!pool.length){
+    stop();
+    activeMood = mood; setAccent(mood.c);
+    document.querySelectorAll('.mood').forEach(el => el.classList.toggle('on', el.dataset.k === mood.k));
+    npNote.hidden = false;
+    npNote.textContent = 'この気分のソースは全部オフになっています。Library から Enable してください。';
+    return;
+  }
+  queue = shuffle(pool);
+  if(queue.length > 1 && queue[0] === lastKey) queue.push(queue.shift());
+  nextCandidate(false);
+}
+
+function stop(){
+  if(player && player.destroy){ try{ player.destroy(); }catch(e){} }
+  player = null; current = null; currentKey = null; queue = []; activeMood = null;
+  clearTimeout(watchdog); clearTimer();
+  stage.innerHTML = '<div class="idle-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+                    'stroke-width="1.2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.6"/></svg></div>';
+  npT.textContent = 'Nothing playing';
+  npC.textContent = 'Pick a mood, or paste a URL below';
+  npNote.hidden = true;
+  openEl.hidden = true; volEl.disabled = true;
+  document.body.classList.add('idle');
+  document.title = 'Room Tone';
+  document.querySelectorAll('.mood.on').forEach(el => el.classList.remove('on'));
+  renderCatalog();
+}
+
+/* ---- 気分タイル ---- */
+const moodsEl = $('#moods');
+MOODS.forEach((m, i) => {
+  const b = document.createElement('button');
+  b.className = 'mood'; b.dataset.k = m.k; b.type = 'button';
+  b.style.setProperty('--h', m.c);
+  b.innerHTML = '<span class="no">' + String(i + 1).padStart(2,'0') + '</span>' + svg(m.ic) +
+                '<span class="en">' + m.en + '</span>' +
+                '<span class="nm">' + m.nm + '</span><span class="ds">' + m.ds + '</span>';
+  b.addEventListener('click', () => pickFromMood(m));
+  moodsEl.appendChild(b);
+});
+
+$('#omakase').addEventListener('click', () => pickFromMood(MOODS[Math.floor(Math.random() * MOODS.length)]));
+/* Another: 同じ気分の中を重複なく順に送り、一周したら引き直す */
+$('#again').addEventListener('click', () => {
+  if(!activeMood){ pickFromMood(MOODS[Math.floor(Math.random() * MOODS.length)]); return; }
+  if(queue.length) nextCandidate(false);
+  else pickFromMood(activeMood);
+});
+$('#stop').addEventListener('click', stop);
+
+/* ---- 音量 ---- */
+volEl.value = store.get('bgm.vol', 45);
+volEl.addEventListener('input', () => {
+  if(player && player.setVolume){ try{ player.setVolume(Number(volEl.value)); }catch(e){} }
+  store.set('bgm.vol', Number(volEl.value));
+});
+
+/* ---- スリープタイマー ---- */
+function clearTimer(){
+  if(timerId){ clearInterval(timerId); timerId = null; }
+  endsAt = 0; leftEl.textContent = ''; timerEl.value = '0';
+}
+timerEl.addEventListener('change', () => {
+  if(timerId){ clearInterval(timerId); timerId = null; }
+  const min = Number(timerEl.value);
+  if(!min){ endsAt = 0; leftEl.textContent = ''; return; }
+  endsAt = Date.now() + min * 60000;
+  timerId = setInterval(() => {
+    const ms = endsAt - Date.now();
+    if(ms <= 0){ stop(); return; }
+    const t = Math.ceil(ms / 1000);
+    leftEl.textContent = String(Math.floor(t / 60)).padStart(2,'0') + ':' + String(t % 60).padStart(2,'0');
+  }, 1000);
+});
+
+/* ---- 手動再生 ---- */
+const urlEl = $('#url');
+function playManual(){
+  const src = parseYT(urlEl.value);
+  if(!src){
+    npNote.hidden = false;
+    npNote.textContent = "Couldn't read that URL. Paste a YouTube video, live stream or playlist link.";
+    return;
+  }
+  activeMood = null; queue = [];
+  document.querySelectorAll('.mood.on').forEach(el => el.classList.remove('on'));
+  play(src, src.type === 'list' ? 'Playlist' : 'Direct', urlEl.value.trim(), null);
+}
+$('#playUrl').addEventListener('click', playManual);
+urlEl.addEventListener('keydown', e => { if(e.key === 'Enter') playManual(); });
+
+/* ---- 気分チップ（選択用の共通部品） ---- */
+function moodPicker(selected){
+  const wrap = document.createElement('div'); wrap.className = 'mpick';
+  MOODS.forEach(m => {
+    const c = document.createElement('button');
+    c.type = 'button'; c.className = 'mchip'; c.textContent = m.nm;
+    c.style.setProperty('--h', m.c);
+    c.classList.toggle('on', selected.indexOf(m.k) >= 0);
+    c.addEventListener('click', () => {
+      const i = selected.indexOf(m.k);
+      if(i >= 0) selected.splice(i, 1); else selected.push(m.k);
+      c.classList.toggle('on', selected.indexOf(m.k) >= 0);
+    });
+    wrap.appendChild(c);
+  });
+  return wrap;
+}
+
+/* ---- Library への追加 ---- */
+const addPanel = $('#addPanel'), addT = $('#addT'), addC = $('#addC'), addMoods = $('#addMoods');
+let addSrc = null, addSel = [];
+
+$('#addBtn').addEventListener('click', () => {
+  const src = parseYT(urlEl.value) || (current && current.src);
+  if(!src){
+    npNote.hidden = false;
+    npNote.textContent = 'Nothing to add — paste a URL, or play something first.';
+    return;
+  }
+  addSrc = src; addSel = [];
+  addT.value = (current && current.src && current.src.id === src.id && currentKey === null && current.title !== 'Direct' && current.title !== 'Playlist')
+             ? current.title : '';
+  addC.value = '';
+  addMoods.innerHTML = ''; addMoods.appendChild(moodPicker(addSel));
+  addPanel.hidden = false;
+  addT.focus();
+
+  /* タイトル・チャンネルの自動取得（CORSで失敗しても手入力できるので握りつぶす） */
+  fetch('https://www.youtube.com/oembed?format=json&url=' + encodeURIComponent(watchUrl(src)))
+    .then(r => r.ok ? r.json() : null)
+    .then(j => { if(!j) return;
+      if(!addT.value) addT.value = j.title || '';
+      if(!addC.value) addC.value = j.author_name || ''; })
+    .catch(() => {});
+});
+$('#addCancel').addEventListener('click', () => { addPanel.hidden = true; addSrc = null; });
+$('#addOk').addEventListener('click', () => {
+  if(!addSrc) return;
+  const key = userKey(addSrc);
+  const u = userSources();
+  u[key] = addSrc.type === 'list'
+    ? {t: addT.value.trim() || 'Playlist', c: addC.value.trim(), p: addSrc.id, k:'vod'}
+    : {t: addT.value.trim() || addSrc.id,  c: addC.value.trim(), v: addSrc.id, k:'vod'};
+  store.set('bgm.user', u);
+  setMoodsOf(key, addSel);
+  addPanel.hidden = true; addSrc = null; urlEl.value = '';
+  renderCatalog(); renderFavs();
+  $('#srcDetails').open = true;
+});
+
+/* ---- 自分で足したソースへのショートカット ---- */
+function renderFavs(){
+  const u = userSources();
+  const box = $('#favs'); box.innerHTML = '';
+  Object.keys(u).forEach(k => {
+    const s = u[k];
+    const c = document.createElement('span'); c.className = 'chip';
+    c.textContent = s.t; c.title = s.c || '';
+    c.addEventListener('click', () => {
+      activeMood = null; queue = [];
+      document.querySelectorAll('.mood.on').forEach(el => el.classList.remove('on'));
+      play(srcOf(s), s.t, s.c || 'Saved', k);
+    });
+    box.appendChild(c);
+  });
+}
+renderFavs();
+
+/* ---- 1件ぶんの編集フォーム ---- */
+function field(label, value, ph){
+  const l = document.createElement('label');
+  const s = document.createElement('span'); s.textContent = label;
+  const i = document.createElement('input');
+  i.type = 'text'; i.value = value || ''; i.spellcheck = false;
+  if(ph) i.placeholder = ph;
+  l.append(s, i);
+  return {wrap:l, input:i};
+}
+
+function buildEditor(key, entry, close){
+  const frag = document.createDocumentFragment();
+  const sel  = moodsOf(key);
+
+  const f1 = document.createElement('div'); f1.className = 'fields';
+  const fT  = field('Title',   entry.t, '表示名');
+  const fC  = field('Channel', entry.c, 'チャンネル名');
+  f1.append(fT.wrap, fC.wrap);
+
+  const f2 = document.createElement('div'); f2.className = 'fields';
+  const cur = entry.p ? 'https://www.youtube.com/playlist?list=' + entry.p
+                      : 'https://www.youtube.com/watch?v=' + entry.v;
+  const fU = field('URL / ID', cur, 'YouTubeのURL、動画ID、プレイリストID');
+  fU.wrap.style.flexBasis = '100%';
+
+  const kl = document.createElement('label');
+  const ks = document.createElement('span'); ks.textContent = 'Kind';
+  const kSel = document.createElement('select');
+  [['vod','VOD — 通常の動画'], ['live','LIVE — 24時間配信']].forEach(o => {
+    const op = document.createElement('option'); op.value = o[0]; op.textContent = o[1];
+    kSel.appendChild(op);
+  });
+  kSel.value = (entry.k === 'live') ? 'live' : 'vod';
+  kl.append(ks, kSel); kl.style.flex = '0 0 auto';
+  f2.append(fU.wrap, kl);
+
+  const lbl = document.createElement('div'); lbl.className = 'lbl';
+  lbl.textContent = 'このソースを入れる気分';
+  const pick = moodPicker(sel);
+
+  const err = document.createElement('div'); err.className = 'ederr'; err.hidden = true;
+
+  const acts = document.createElement('div'); acts.className = 'acts row';
+  const ok = document.createElement('button'); ok.className = 'b sm pri'; ok.textContent = 'Save';
+  ok.addEventListener('click', () => {
+    const src = parseYT(fU.input.value);
+    if(!src){
+      err.hidden = false;
+      err.textContent = 'URLを認識できませんでした。YouTubeの動画／ライブ／プレイリストのURLか、IDを入れてください。';
+      return;
+    }
+    const e = {
+      t: fT.input.value.trim() || (src.type === 'list' ? 'Playlist' : src.id),
+      c: fC.input.value.trim(),
+      k: kSel.value
+    };
+    if(src.type === 'list') e.p = src.id; else e.v = src.id;
+    saveEntry(key, e);
+    setMoodsOf(key, sel);
+    revive(key);              /* 内容を直したので失敗印は解除して再挑戦させる */
+    renderCatalog(); renderFavs();
+  });
+
+  const cancel = document.createElement('button'); cancel.className = 'b sm'; cancel.textContent = 'Cancel';
+  cancel.addEventListener('click', close);
+  acts.append(ok, cancel);
+
+  if(hasEdit(key)){
+    const rv = document.createElement('button'); rv.className = 'b sm'; rv.textContent = 'Revert';
+    rv.title = 'HTMLに書かれた元の内容に戻す';
+    rv.addEventListener('click', () => { revertEntry(key); renderCatalog(); });
+    acts.appendChild(rv);
+  }
+  if(isMine(key)){
+    const del = document.createElement('button'); del.className = 'b sm dg'; del.textContent = 'Delete';
+    del.addEventListener('click', () => {
+      const u = userSources(); delete u[key]; store.set('bgm.user', u);
+      const o = overrides(); delete o[key]; store.set('bgm.moods', o);
+      setHidden(key, false);
+      renderCatalog(); renderFavs();
+    });
+    acts.appendChild(del);
+  }
+
+  frag.append(f1, f2, lbl, pick, err, acts);
+  return frag;
+}
+
+/* ---- Library ---- */
+function renderCatalog(){
+  const box = $('#catalog'); if(!box) return;
+  box.innerHTML = '';
+  const all = allSources();
+  const keys = Object.keys(all);
+  const ng = keys.filter(isOff).length;
+  $('#srcSummary').textContent = keys.length + ' sources' + (ng ? '　/　' + ng + ' off' : '　/　all enabled');
+
+  keys.forEach(k => {
+    const s = all[k];
+    const off = isOff(k);
+    const row = document.createElement('div');
+    row.className = 'srow' + (off ? ' ng' : (k === currentKey ? ' ok' : ''));
+
+    const dot  = document.createElement('span'); dot.className = 'dot';
+    const meta = document.createElement('span'); meta.className = 'meta';
+    const tt   = document.createElement('span'); tt.className = 'tt'; tt.textContent = s.t;
+    const cc   = document.createElement('span'); cc.className = 'cc'; cc.textContent = s.c || '—';
+    meta.append(tt, cc);
+
+    const tags = document.createElement('span'); tags.className = 'tags';
+    const tagKeys = moodsOf(k);
+    if(tagKeys.length){
+      tagKeys.forEach(mk => {
+        const m = moodByKey(mk); if(!m) return;
+        const t = document.createElement('span'); t.className = 'mtag';
+        t.style.setProperty('--h', m.c); t.textContent = m.nm;
+        tags.appendChild(t);
+      });
+    } else {
+      const n = document.createElement('span'); n.className = 'none'; n.textContent = '未分類';
+      tags.appendChild(n);
+    }
+
+    const mine = isMine(k), edited = hasEdit(k);
+    const kd = document.createElement('span');
+    kd.className = 'kind' + (mine ? ' mine' : (edited ? ' edited' : ''));
+    kd.textContent = mine ? 'MINE' : (edited ? 'EDITED' : (s.k === 'live' ? 'LIVE' : 'VOD'));
+    kd.title = mine ? '自分で追加したソース'
+                    : (edited ? 'HTMLの内容を上書きしています（Revert で戻せます）' : '');
+
+    const ac = document.createElement('span'); ac.className = 'ac';
+    const a = document.createElement('a');
+    a.className = 'b sm'; a.href = watchUrl(srcOf(s));
+    a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'Check';
+
+    const pl = document.createElement('button');
+    pl.className = 'b sm'; pl.textContent = 'Play';
+    pl.addEventListener('click', () => {
+      activeMood = null; queue = [];
+      document.querySelectorAll('.mood.on').forEach(el => el.classList.remove('on'));
+      play(srcOf(s), s.t, s.c || '', k);
+    });
+
+    const ed = document.createElement('button');
+    ed.className = 'b sm'; ed.textContent = 'Edit';
+
+    /* Disable / Enable — 気分のローテーションから外す・戻す */
+    const sw = document.createElement('button');
+    sw.className = 'b sm' + (off ? '' : ' dg');
+    sw.textContent = off ? 'Enable' : 'Disable';
+    sw.title = off ? 'ローテーションに戻す' : 'ローテーションから外す（Export にも反映されます）';
+    sw.addEventListener('click', () => {
+      if(off){ setHidden(k, false); revive(k); }
+      else { setHidden(k, true); renderCatalog(); }
+    });
+
+    ac.append(a, pl, ed, sw);
+    row.append(dot, meta, tags, kd, ac);
+    box.appendChild(row);
+
+    /* 編集パネル（開いたときだけ中身を作る） */
+    const edit = document.createElement('div');
+    edit.className = 'sedit'; edit.hidden = true;
+    ed.addEventListener('click', () => {
+      if(!edit.hidden){ edit.hidden = true; return; }
+      edit.innerHTML = '';
+      edit.append(buildEditor(k, s, () => { edit.hidden = true; }));
+      edit.hidden = false;
+    });
+    box.appendChild(edit);
+  });
+}
+$('#reviveAll').addEventListener('click', () => {
+  store.set('bgm.dead', {}); store.set('bgm.off', {}); markDirty(); renderCatalog();
+});
+$('#saveSrv').addEventListener('click', saveToServer);
+
+/* ---- Export（HTMLに書き戻すためのコード） ---- */
+$('#exportBtn').addEventListener('click', () => {
+  const box = $('#exportBox');
+  if(!box.hidden){ box.hidden = true; return; }
+  const u = userSources(), ed = editMap();
+  const q = s => "'" + String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'";
+  const line = (k, s) => '  ' + k + ' : {t:' + q(s.t) + ', c:' + q(s.c) +
+        (s.p ? ', p:' + q(s.p) : ', v:' + q(s.v)) +
+        ", k:'" + (s.k === 'live' ? 'live' : 'vod') + "'},\n";
+  let out = '';
+
+  if(Object.keys(u).length){
+    out += '/* ---- CATALOG に追加 ---- */\n';
+    Object.keys(u).forEach(k => { out += line(k, u[k]); });
+    out += '\n';
+  }
+  if(Object.keys(ed).length){
+    out += '/* ---- CATALOG の以下の行を差し替え ---- */\n';
+    Object.keys(ed).forEach(k => { out += line(k, ed[k]); });
+    out += '\n';
+  }
+  out += '/* ---- MOODS の ids を、以下で置き換え ---- */\n';
+  out += '/*      Disable にしたソースはここから外れています                 */\n';
+  MOODS.forEach(m => {
+    const ids = poolFor(m.k).filter(k => !isHidden(k)).map(q).join(',');
+    out += '  ' + m.k + (m.k.length < 5 ? ' '.repeat(5 - m.k.length) : '') + ' : [' + ids + '],\n';
+  });
+  if(!Object.keys(u).length && !Object.keys(ed).length && !Object.keys(overrides()).length){
+    out = '/* このブラウザでの追加・変更はありません。 */\n\n' + out;
+  }
+  box.value = out;
+  box.hidden = false;
+  box.focus(); box.select();
+});
+
+renderCatalog();
+
+/* ---- キーボード：1–8 で気分、0 / Esc で停止 ---- */
+document.addEventListener('keydown', e => {
+  if(e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA' ||
+     e.metaKey || e.ctrlKey || e.altKey) return;
+  if(e.key >= '1' && e.key <= '8'){
+    const m = MOODS[Number(e.key) - 1];
+    if(m){ e.preventDefault(); pickFromMood(m); }
+  } else if(e.key === '0' || e.key === 'Escape'){
+    e.preventDefault(); stop();
+  }
+});
+
+setAccent(getComputedStyle(document.documentElement).getPropertyValue('--a').trim() || '#7d95c8');
+
+/* サーバに sources.json があれば、それを正として読み直す */
+loadFromServer().then(() => { renderFavs(); renderCatalog(); });
+</script>
+</body>
+</html>
